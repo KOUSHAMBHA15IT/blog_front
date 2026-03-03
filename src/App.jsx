@@ -1,15 +1,10 @@
 // src/App.jsx
 import { useState, useEffect, createContext, useContext } from "react";
 import { Routes, Route, Link, useNavigate, useParams, Navigate, Outlet } from "react-router-dom";
-import { authAPI, postAPI } from "./api/api.js"; // ✅ actually imported and used
+import { authAPI, postAPI } from "./api/api.js";
 
 const CATEGORIES = ["All", "Design", "Backend", "CSS", "React", "DevOps"];
 
-// ─── Helper: map Spring Boot PostResponse → shape the UI expects ──────────────
-// Spring Boot returns: { id, title, excerpt, content, category, likes, featured,
-//                        createdAt, authorName, authorEmail, authorId }
-// UI expects:          { id, title, excerpt, content, category, likes, featured,
-//                        author, avatar, date, readTime }
 function mapPost(p) {
   return {
     ...p,
@@ -33,9 +28,8 @@ function AuthProvider({ children }) {
     catch { return null; }
   });
 
-  // data = { token, userId, name, email }  from Spring Boot
   const login = (data) => {
-    localStorage.setItem("blog_token", data.token);   // ✅ key matches api.js
+    localStorage.setItem("blog_token", data.token);
     localStorage.setItem("blog_user", JSON.stringify({
       id: data.userId, name: data.name, email: data.email,
     }));
@@ -85,6 +79,79 @@ function TypewriterLoader() {
           <div className="keyboard"></div>
         </div>
         <p className="loader-label">Loading<span className="blink-dots">...</span></p>
+      </div>
+    </div>
+  );
+}
+
+// ─── Guest Popup ──────────────────────────────────────────────────────────────
+function GuestPopup() {
+  const { user } = useAuth();
+  const navigate = useNavigate();
+  const [visible, setVisible] = useState(false);
+  const [dismissed, setDismissed] = useState(false);
+
+  // Show after 1.5s if guest
+  useEffect(() => {
+    if (user || dismissed) return;
+    const t = setTimeout(() => setVisible(true), 1500);
+    return () => clearTimeout(t);
+  }, [user, dismissed]);
+
+  // Re-show after 60s if still guest and not dismissed
+  useEffect(() => {
+    if (user || dismissed || visible) return;
+    const interval = setInterval(() => {
+      if (!dismissed && !user) setVisible(true);
+    }, 60000);
+    return () => clearInterval(interval);
+  }, [user, dismissed, visible]);
+
+  const handleDismiss  = () => { setVisible(false); setDismissed(true); };
+  const handleLogin    = () => { setVisible(false); navigate("/login"); };
+  const handleRegister = () => { setVisible(false); navigate("/register"); };
+
+  if (!visible || user) return null;
+
+  return (
+    <div className="guest-popup-overlay" onClick={handleDismiss}>
+      <div className="guest-popup" onClick={e => e.stopPropagation()}>
+        <button className="guest-popup-close" onClick={handleDismiss}>✕</button>
+        <div className="guest-popup-icon">✏️</div>
+        <h2 className="guest-popup-title">
+          Join <span className="text-orange">The Blog</span>
+        </h2>
+        <p className="guest-popup-body">
+          You're browsing as a guest. Sign in or create a free account to
+          read all articles, like posts, and share your own stories.
+        </p>
+        <div className="guest-popup-stats">
+          <div className="guest-popup-stat">
+            <span className="guest-popup-stat-num">6+</span>
+            <span className="guest-popup-stat-label">Articles</span>
+          </div>
+          <div className="guest-popup-stat-divider" />
+          <div className="guest-popup-stat">
+            <span className="guest-popup-stat-num">Free</span>
+            <span className="guest-popup-stat-label">Forever</span>
+          </div>
+          <div className="guest-popup-stat-divider" />
+          <div className="guest-popup-stat">
+            <span className="guest-popup-stat-num">✍️</span>
+            <span className="guest-popup-stat-label">Write Posts</span>
+          </div>
+        </div>
+        <div className="guest-popup-actions">
+          <button className="guest-popup-btn-primary" onClick={handleRegister}>
+            Create Free Account
+          </button>
+          <button className="guest-popup-btn-secondary" onClick={handleLogin}>
+            Sign In
+          </button>
+        </div>
+        <button className="guest-popup-skip" onClick={handleDismiss}>
+          Continue as guest →
+        </button>
       </div>
     </div>
   );
@@ -142,7 +209,6 @@ function Navbar({ category, setCategory }) {
 }
 
 // ─── Home Page ────────────────────────────────────────────────────────────────
-// GET /api/posts  or  GET /api/posts?category=React
 function HomePage({ category }) {
   const [posts, setPosts] = useState([]);
   const [search, setSearch] = useState("");
@@ -152,7 +218,6 @@ function HomePage({ category }) {
   const navigate = useNavigate();
   const { user } = useAuth();
 
-  // ✅ Calls GET /api/posts or GET /api/posts?category=X
   useEffect(() => {
     setLoading(true);
     setError("");
@@ -162,34 +227,21 @@ function HomePage({ category }) {
       .finally(() => setLoading(false));
   }, [category]);
 
-  // const filtered = posts.filter(p =>
-  //   p.title.toLowerCase().includes(search.toLowerCase()) ||
-  //   p.author.toLowerCase().includes(search.toLowerCase())
-  // );
-
-  // const featured = posts.find(p => p.featured);
-  // const regular  = category === "All" && !search ? filtered.filter(p => !p.featured) : filtered;
-
-
   const filtered = posts.filter(p =>
-  p.title.toLowerCase().includes(search.toLowerCase()) ||
-  p.author.toLowerCase().includes(search.toLowerCase())
-);
+    p.title.toLowerCase().includes(search.toLowerCase()) ||
+    p.author.toLowerCase().includes(search.toLowerCase())
+  );
 
-// ✅ Featured = post with maximum likes
-const featured =
-  posts.length > 0
-    ? posts.reduce((max, post) =>
-        (post.likes || 0) > (max.likes || 0) ? post : max
-      )
-    : null;
+  const featured =
+    posts.length > 0
+      ? posts.reduce((max, post) => (post.likes || 0) > (max.likes || 0) ? post : max)
+      : null;
 
-// Remove the featured post from regular grid
-const regular =
-  category === "All" && !search
-    ? filtered.filter(p => p.id !== featured?.id)
-    : filtered;
-  // ✅ Calls POST /api/posts/:id/like
+  const regular =
+    category === "All" && !search
+      ? filtered.filter(p => p.id !== featured?.id)
+      : filtered;
+
   const handleLike = async (id) => {
     const wasLiked = likedPosts.has(id);
     setLikedPosts(prev => { const n = new Set(prev); wasLiked ? n.delete(id) : n.add(id); return n; });
@@ -197,14 +249,12 @@ const regular =
       const updated = await postAPI.like(id);
       setPosts(prev => prev.map(p => p.id === id ? mapPost(updated) : p));
     } catch (e) {
-      // revert on failure
       setLikedPosts(prev => { const n = new Set(prev); wasLiked ? n.add(id) : n.delete(id); return n; });
     }
   };
 
   return (
     <>
-      {/* Hero */}
       <section className="hero">
         <div className="hero-inner">
           <p className="hero-eyebrow">✦ THE BLOG — THOUGHTS ON CODE &amp; DESIGN</p>
@@ -224,7 +274,6 @@ const regular =
         </div>
       </section>
 
-      {/* Featured */}
       {featured && category === "All" && !search && (
         <section className="featured-wrap">
           <div className="featured-inner">
@@ -257,7 +306,6 @@ const regular =
         </section>
       )}
 
-      {/* Posts Grid */}
       <section className="posts-section">
         <div className="posts-inner">
           <div className="posts-header">
@@ -324,7 +372,6 @@ const regular =
 }
 
 // ─── Post Page ────────────────────────────────────────────────────────────────
-// GET /api/posts/:id  |  POST /api/posts/:id/like  |  DELETE /api/posts/:id
 function PostPage() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -337,14 +384,12 @@ function PostPage() {
   useEffect(() => {
     window.scrollTo(0, 0);
     setLoading(true);
-    // ✅ Calls GET /api/posts/:id
     postAPI.getById(id)
       .then(data => setPost(mapPost(data)))
       .catch(() => setError("Post not found."))
       .finally(() => setLoading(false));
   }, [id]);
 
-  // ✅ Calls POST /api/posts/:id/like
   const handleLike = async () => {
     try {
       const updated = await postAPI.like(id);
@@ -353,7 +398,6 @@ function PostPage() {
     } catch (e) { console.error("Like failed", e); }
   };
 
-  // ✅ Calls DELETE /api/posts/:id  (JWT sent automatically by interceptor)
   const handleDelete = async () => {
     if (!window.confirm("Delete this post?")) return;
     try {
@@ -389,7 +433,6 @@ function PostPage() {
         <button className={`btn-like ${liked ? "liked" : ""}`} onClick={handleLike}>
           {liked ? "♥" : "♡"} {post.likes} Likes
         </button>
-        {/* Only show Delete if this user is the author */}
         {user && user.email === post.authorEmail && (
           <button className="btn-danger" onClick={handleDelete}>🗑 Delete</button>
         )}
@@ -399,7 +442,6 @@ function PostPage() {
 }
 
 // ─── Login Page ───────────────────────────────────────────────────────────────
-// POST /api/auth/login  →  { token, userId, name, email }
 function LoginPage() {
   const [form, setForm] = useState({ email: "", password: "" });
   const [err, setErr] = useState("");
@@ -414,10 +456,8 @@ function LoginPage() {
     setLoading(true);
     setErr("");
     try {
-      // ✅ Calls POST /api/auth/login
       const data = await authAPI.login(form);
-      // data = { token, userId, name, email }
-      login(data); // saves blog_token + blog_user to localStorage
+      login(data);
       navigate("/");
     } catch (e) {
       setErr(e.response?.data?.message || "Invalid email or password.");
@@ -473,7 +513,6 @@ function LoginPage() {
 }
 
 // ─── Register Page ────────────────────────────────────────────────────────────
-// POST /api/auth/register  →  { token, userId, name, email }
 function RegisterPage() {
   const [form, setForm] = useState({ name: "", email: "", password: "" });
   const [err, setErr] = useState("");
@@ -489,10 +528,8 @@ function RegisterPage() {
     setLoading(true);
     setErr("");
     try {
-      // ✅ Calls POST /api/auth/register
       const data = await authAPI.register(form);
-      // data = { token, userId, name, email }
-      login(data); // saves blog_token + blog_user to localStorage
+      login(data);
       navigate("/");
     } catch (e) {
       setErr(e.response?.data?.message || "Registration failed. Email may already be in use.");
@@ -556,7 +593,6 @@ function RegisterPage() {
 }
 
 // ─── Write Page ───────────────────────────────────────────────────────────────
-// POST /api/posts  (JWT auto-attached by interceptor)
 function WritePage() {
   const [form, setForm] = useState({ title: "", excerpt: "", content: "", category: "Design" });
   const [err, setErr] = useState("");
@@ -569,9 +605,7 @@ function WritePage() {
     setLoading(true);
     setErr("");
     try {
-      // ✅ Calls POST /api/posts with JWT in header
       const post = await postAPI.create(form);
-      // post = PostResponse { id, title, ... }
       navigate(`/post/${post.id}`);
     } catch (e) {
       setErr(e.response?.data?.message || "Failed to publish. Please try again.");
@@ -621,7 +655,6 @@ function WritePage() {
 }
 
 // ─── My Posts Page ────────────────────────────────────────────────────────────
-// GET /api/posts/my  |  DELETE /api/posts/:id
 function MyPostsPage() {
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -629,7 +662,6 @@ function MyPostsPage() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    // ✅ Calls GET /api/posts/my (JWT auto-attached)
     postAPI.getMyPosts()
       .then(data => setPosts(data.map(mapPost)))
       .catch(() => setError("Failed to load your posts."))
@@ -639,7 +671,6 @@ function MyPostsPage() {
   const handleDelete = async (id) => {
     if (!window.confirm("Delete this post?")) return;
     try {
-      // ✅ Calls DELETE /api/posts/:id (JWT auto-attached)
       await postAPI.delete(id);
       setPosts(prev => prev.filter(p => p.id !== id));
     } catch (e) { alert("Delete failed."); }
@@ -742,6 +773,7 @@ export default function App() {
 
   return (
     <AuthProvider>
+      <GuestPopup />                {/* ✅ INSIDE AuthProvider so useAuth() works */}
       <Navbar category={category} setCategory={setCategory} />
       <main>
         <Routes>
@@ -749,12 +781,10 @@ export default function App() {
           <Route path="/post/:id" element={<PostPage />} />
           <Route path="/login"    element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
-
           <Route element={<ProtectedRoute />}>
             <Route path="/write"    element={<WritePage />} />
             <Route path="/my-posts" element={<MyPostsPage />} />
           </Route>
-
           <Route path="*" element={<NotFoundPage />} />
         </Routes>
       </main>
@@ -762,5 +792,3 @@ export default function App() {
     </AuthProvider>
   );
 }
-
-
