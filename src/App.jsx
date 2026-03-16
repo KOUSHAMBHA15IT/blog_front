@@ -2,6 +2,7 @@
 import { useState, useEffect, createContext, useContext } from "react";
 import { Routes, Route, Link, useNavigate, useParams, Navigate, Outlet } from "react-router-dom";
 import { authAPI, postAPI } from "./api/api.js";
+import ChatBot from "./pages/ChatBot.jsx";
 
 const CATEGORIES = ["All", "Design", "Backend", "CSS", "React", "DevOps"];
 
@@ -774,6 +775,7 @@ export default function App() {
   return (
     <AuthProvider>
       <GuestPopup />                {/* ✅ INSIDE AuthProvider so useAuth() works */}
+      <ChatBot />
       <Navbar category={category} setCategory={setCategory} />
       <main>
         <Routes>
